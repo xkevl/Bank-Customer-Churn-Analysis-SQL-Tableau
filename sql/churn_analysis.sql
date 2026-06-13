@@ -39,6 +39,13 @@ SELECT
 	ROUND(SUM(CASE WHEN Exited = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS churn_rate
 FROM churn_staging;
 
+-- Average balance by churn
+SELECT
+	Exited,
+    ROUND(AVG(Balance), 2) AS avg_balance
+FROM churn_staging
+GROUP BY Exited;
+
 -- Churn rate by credit score
 SELECT
 	CASE 
@@ -165,21 +172,50 @@ SELECT
 FROM churn_staging, avg_sal
 GROUP BY salary;
 
--- Identifying high-value churn customers
-SELECT *
+-- High-value churned customers for potential win-back analysis
+SELECT
+    CustomerId,
+    Surname,
+    Geography,
+    Gender,
+    Age,
+    CreditScore,
+    Tenure,
+    Balance,
+    NumOfProducts,
+    IsActiveMember,
+    EstimatedSalary
 FROM churn_staging
 WHERE Exited = 1
-AND Balance > 
-(
-SELECT 
-	AVG(Balance)
-FROM churn_staging
-)
+  AND Balance > (SELECT AVG(Balance) FROM churn_staging)
 ORDER BY Balance DESC;
 
--- Average balance by churn
+-- Identify high-risk customer segments based on multiple churn-related factors
 SELECT
-	Exited,
-    ROUND(AVG(Balance), 2) AS avg_balance
+    Geography,
+    Gender,
+    CASE
+        WHEN Age < 30 THEN 'Under 30'
+        WHEN Age < 50 THEN '30-49'
+        ELSE '50+'
+    END AS age_group,
+    CASE
+        WHEN Balance = 0 THEN 'No Balance'
+        WHEN Balance < (SELECT AVG(Balance) FROM churn_staging) THEN 'Below Average Balance'
+        ELSE 'Above Average Balance'
+    END AS balance_group,
+    NumOfProducts,
+    IsActiveMember,
+    COUNT(*) AS total_customers,
+    SUM(CASE WHEN Exited = 1 THEN 1 ELSE 0 END) AS churned_customers,
+    ROUND(SUM(CASE WHEN Exited = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS churn_rate
 FROM churn_staging
-GROUP BY Exited;
+GROUP BY
+    Geography,
+    Gender,
+    age_group,
+    balance_group,
+    NumOfProducts,
+    IsActiveMember
+HAVING COUNT(*) >= 25
+ORDER BY churn_rate DESC;
